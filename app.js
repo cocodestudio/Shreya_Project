@@ -1,12 +1,38 @@
 /* ═══════════════════════════════════════════════════════════
-   EXPENSES TRACKER DASHBOARD — app.js
+   EXPENSES TRACKER DASHBOARD — app.js (Firebase Integrated)
    Student: Shreya Sharma | Roll: 22014168977
    CoCode Studio Pvt. Ltd.
 ═══════════════════════════════════════════════════════════ */
 
-// ── CONSTANTS ─────────────────────────────────────────────
-const STORAGE_KEY = 'spendSmart_transactions';
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  getDocs, 
+  deleteDoc, 
+  doc, 
+  updateDoc, 
+  query, 
+  orderBy, 
+  onSnapshot 
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+// ── FIREBASE CONFIG ───────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyD4ayiauSfizH1Zv4irIdYlKwIdzE69R80",
+  authDomain: "shreyafb-2026.firebaseapp.com",
+  projectId: "shreyafb-2026",
+  storageBucket: "shreyafb-2026.firebasestorage.app",
+  messagingSenderId: "133872516",
+  appId: "1:133872516:web:7189c7309e22e98e583bd1"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+const txCol = collection(db, "transactions_shreya"); // App-specific collection to avoid collision
+
+// ── CONSTANTS ─────────────────────────────────────────────
 const CATEGORY_META = {
   Food:          { icon: '🍔', color: '#F59E0B', bg: 'rgba(245,158,11,0.15)' },
   Transport:     { icon: '🚌', color: '#3B82F6', bg: 'rgba(59,130,246,0.15)' },
@@ -29,51 +55,39 @@ let barChart = null;
 
 // ── INIT ──────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  loadFromStorage();
+  initFirestoreListener();
   setDefaultDate();
   setDateDisplay();
   populateYearSelect();
-  renderAll();
 });
 
-// ── STORAGE ───────────────────────────────────────────────
-function loadFromStorage() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    transactions = raw ? JSON.parse(raw) : seedData();
-  } catch { transactions = seedData(); }
+// ── FIRESTORE ─────────────────────────────────────────────
+function initFirestoreListener() {
+  const q = query(txCol, orderBy("date", "desc"));
+  onSnapshot(q, (snapshot) => {
+    transactions = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    renderAll();
+  });
 }
 
-function saveToStorage() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
+async function saveTransactionToFirestore(data, id = null) {
+  if (id) {
+    const docRef = doc(db, "transactions_shreya", id);
+    await updateDoc(docRef, data);
+  } else {
+    await addDoc(txCol, data);
+  }
 }
 
-function seedData() {
-  // Sample data so dashboard looks populated on first load
-  const now = new Date();
-  const y = now.getFullYear(), m = now.getMonth();
-  const d = (mo, da) => `${y}-${String(mo+1).padStart(2,'0')}-${String(da).padStart(2,'0')}`;
-  const data = [
-    { id: uid(), type:'income',  desc:'Freelance Project',    amount:15000, category:'Others',        date: d(m, 2)  },
-    { id: uid(), type:'income',  desc:'Part-time Tutoring',   amount:4500,  category:'Education',     date: d(m, 5)  },
-    { id: uid(), type:'expense', desc:'Grocery Shopping',     amount:1800,  category:'Food',          date: d(m, 3)  },
-    { id: uid(), type:'expense', desc:'Monthly Bus Pass',     amount:600,   category:'Transport',     date: d(m, 1)  },
-    { id: uid(), type:'expense', desc:'Netflix Subscription', amount:499,   category:'Entertainment', date: d(m, 6)  },
-    { id: uid(), type:'expense', desc:'Electricity Bill',     amount:1200,  category:'Bills',         date: d(m, 4)  },
-    { id: uid(), type:'expense', desc:'Pharmacy',             amount:350,   category:'Healthcare',    date: d(m, 8)  },
-    { id: uid(), type:'expense', desc:'Online Course',        amount:2999,  category:'Education',     date: d(m, 7)  },
-    { id: uid(), type:'expense', desc:'Clothes Shopping',     amount:1500,  category:'Shopping',      date: d(m, 9)  },
-    { id: uid(), type:'income',  desc:'Salary',               amount:22000, category:'Others',        date: d(m-1, 1)},
-    { id: uid(), type:'expense', desc:'Dinner Out',           amount:850,   category:'Food',          date: d(m-1,15)},
-    { id: uid(), type:'expense', desc:'Mobile Recharge',      amount:299,   category:'Bills',         date: d(m-1,10)},
-  ];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  return data;
+async function deleteTransactionFromFirestore(id) {
+  const docRef = doc(db, "transactions_shreya", id);
+  await deleteDoc(docRef);
 }
 
 // ── HELPERS ───────────────────────────────────────────────
-function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
-
 function fmtCurrency(n) {
   return '₹' + Math.abs(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -86,16 +100,17 @@ function fmtDate(str) {
 // ── DATE / UI SETUP ───────────────────────────────────────
 function setDateDisplay() {
   const el = document.getElementById('date-display');
-  el.textContent = new Date().toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  if (el) el.textContent = new Date().toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
 }
 
 function setDefaultDate() {
   const el = document.getElementById('f-date');
-  el.value = new Date().toISOString().split('T')[0];
+  if (el) el.value = new Date().toISOString().split('T')[0];
 }
 
 function populateYearSelect() {
   const sel = document.getElementById('year-select');
+  if (!sel) return;
   sel.innerHTML = '';
   const years = [...new Set(transactions.map(t => t.date.slice(0,4)))];
   if (!years.includes(String(new Date().getFullYear()))) years.push(String(new Date().getFullYear()));
@@ -112,6 +127,7 @@ function renderAll() {
   renderSummary();
   renderCharts();
   applyFilters();
+  populateYearSelect();
 }
 
 // ── SUMMARY CARDS ──────────────────────────────────────────
@@ -162,10 +178,15 @@ function renderPieChart() {
   const colors  = labels.map(l => CATEGORY_META[l]?.color || '#6B7280');
   const total   = data.reduce((s, v) => s + v, 0);
 
-  document.getElementById('cat-count').textContent  = `${labels.length} categor${labels.length === 1 ? 'y' : 'ies'}`;
-  document.getElementById('doughnut-top').textContent = fmtCurrency(total);
+  const catCountEl = document.getElementById('cat-count');
+  if (catCountEl) catCountEl.textContent  = `${labels.length} categor${labels.length === 1 ? 'y' : 'ies'}`;
+  
+  const doughLabelEl = document.getElementById('doughnut-top');
+  if (doughLabelEl) doughLabelEl.textContent = fmtCurrency(total);
 
-  const ctx = document.getElementById('pieChart').getContext('2d');
+  const canvas = document.getElementById('pieChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
   if (pieChart) pieChart.destroy();
   pieChart = new Chart(ctx, {
     type: 'doughnut',
@@ -188,7 +209,8 @@ function renderPieChart() {
 }
 
 function renderBarChart() {
-  const year = parseInt(document.getElementById('year-select')?.value || new Date().getFullYear());
+  const yearSelect = document.getElementById('year-select');
+  const year = parseInt(yearSelect?.value || new Date().getFullYear());
   const incData = new Array(12).fill(0);
   const expData = new Array(12).fill(0);
 
@@ -201,7 +223,9 @@ function renderBarChart() {
     }
   });
 
-  const ctx = document.getElementById('barChart').getContext('2d');
+  const canvas = document.getElementById('barChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
   if (barChart) barChart.destroy();
   barChart = new Chart(ctx, {
     type: 'bar',
@@ -304,14 +328,23 @@ function renderTransactionList(list) {
         <span class="tx-cat-tag" style="background:${meta.bg};color:${meta.color};">${t.category}</span>
         <div class="tx-amount ${t.type}">${sign}${fmtCurrency(t.amount)}</div>
         <div class="tx-actions">
-          <button class="btn-icon edit" onclick="openEditModal('${t.id}')" title="Edit">✎</button>
-          <button class="btn-icon del"  onclick="openConfirm('${t.id}')"   title="Delete">✕</button>
+          <button class="btn-icon edit" data-id="${t.id}" title="Edit">✎</button>
+          <button class="btn-icon del"  data-id="${t.id}" title="Delete">✕</button>
         </div>
       </div>`;
   }).join('');
+
+  // Add listeners for edit/delete buttons
+  container.querySelectorAll('.btn-icon.edit').forEach(btn => {
+    btn.onclick = () => openEditModal(btn.dataset.id);
+  });
+  container.querySelectorAll('.btn-icon.del').forEach(btn => {
+    btn.onclick = () => openConfirm(btn.dataset.id);
+  });
 }
 
 function escHtml(str) {
+  if (!str) return '';
   return str.replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
 }
 
@@ -350,7 +383,7 @@ function setType(type) {
   document.getElementById('btn-income').classList.toggle('active',  type === 'income');
 }
 
-function saveTransaction() {
+async function saveTransaction() {
   const desc   = document.getElementById('f-desc').value.trim();
   const amount = parseFloat(document.getElementById('f-amount').value);
   const cat    = document.getElementById('f-category').value;
@@ -361,17 +394,15 @@ function saveTransaction() {
   if (!date)          { shakeInput('f-date');   return; }
 
   const editId = document.getElementById('edit-id').value;
-  if (editId) {
-    const idx = transactions.findIndex(t => t.id === editId);
-    if (idx > -1) transactions[idx] = { ...transactions[idx], desc, amount, category: cat, date, type: currentType };
-  } else {
-    transactions.unshift({ id: uid(), type: currentType, desc, amount, category: cat, date });
-  }
+  const data = { type: currentType, desc, amount, category: cat, date };
 
-  saveToStorage();
-  closeModal();
-  populateYearSelect();
-  renderAll();
+  try {
+    await saveTransactionToFirestore(data, editId);
+    closeModal();
+  } catch (error) {
+    console.error("Error saving transaction: ", error);
+    alert("Error saving transaction. Please check your Firestore setup.");
+  }
 }
 
 function shakeInput(id) {
@@ -386,14 +417,19 @@ function shakeInput(id) {
 function openConfirm(id) {
   deleteTargetId = id;
   document.getElementById('confirm-overlay').classList.add('open');
-  document.getElementById('btn-confirm-delete').onclick = () => {
-    transactions = transactions.filter(t => t.id !== deleteTargetId);
-    saveToStorage();
-    closeConfirm();
-    populateYearSelect();
-    renderAll();
-  };
 }
+
+async function confirmDelete() {
+  if (!deleteTargetId) return;
+  try {
+    await deleteTransactionFromFirestore(deleteTargetId);
+    closeConfirm();
+  } catch (error) {
+    console.error("Error deleting transaction: ", error);
+    alert("Error deleting transaction.");
+  }
+}
+
 function closeConfirm() { document.getElementById('confirm-overlay').classList.remove('open'); deleteTargetId = null; }
 function closeConfirmOutside(e) { if (e.target.id === 'confirm-overlay') closeConfirm(); }
 
@@ -444,6 +480,25 @@ function printSummary() {
   `);
   win.document.close();
 }
+
+// ── EXPOSE TO WINDOW ───────────────────────────────────────
+// Required because scripts are now modules and don't share global scope automatically
+window.openModal = openModal;
+window.closeModal = closeModal;
+window.closeModalOutside = closeModalOutside;
+window.openEditModal = openEditModal;
+window.saveTransaction = saveTransaction;
+window.setType = setType;
+window.openConfirm = openConfirm;
+window.closeConfirm = closeConfirm;
+window.closeConfirmOutside = closeConfirmOutside;
+window.toggleSidebar = toggleSidebar;
+window.printSummary = printSummary;
+window.applyFilters = applyFilters;
+window.clearFilters = clearFilters;
+window.renderCharts = renderCharts;
+
+document.getElementById('btn-confirm-delete').onclick = confirmDelete;
 
 // ── CSS SHAKE ANIMATION ────────────────────────────────────
 const style = document.createElement('style');
